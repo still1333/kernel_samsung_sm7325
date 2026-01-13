@@ -21,6 +21,21 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/dcvsh.h>
 
+
+/* ===== ZEQ OC MOD ===== */
+/* Frequências experimentais (software-level) */
+#define ZEQ_EXTRA_FREQ_COUNT 6
+static unsigned int zeq_extra_freqs[] = {
+	2100000,
+	2200000,
+	2300000,
+	2400000,
+	2500000,
+	2600000,
+};
+/* ===== END ZEQ OC MOD ===== */
+
+
 #if IS_ENABLED(CONFIG_SEC_DEBUG)
 #include <linux/sec_debug.h>
 #include <linux/sec_smem.h>
@@ -307,7 +322,10 @@ static unsigned int qcom_cpufreq_hw_get(unsigned int cpu)
 		return 0;
 
 	index = readl_relaxed(policy->driver_data + offsets[REG_PERF_STATE]);
-	index = min(index, lut_max_entries - 1);
+	/* ===== ZEQ OC MOD ===== */
+	if (index >= lut_max_entries)
+		index = lut_max_entries - 1;
+	/* ===== END ZEQ OC MOD ===== */
 
 	return policy->freq_table[index].frequency;
 }
@@ -525,8 +543,32 @@ static int qcom_cpufreq_hw_read_lut(struct platform_device *pdev,
 	if (cpu_dev)
 		dev_pm_opp_set_sharing_cpus(cpu_dev, &c->related_cpus);
 
+
+	/* ===== ZEQ OC MOD ===== */
+	zeq_inject_extra_freqs(c);
+	/* ===== END ZEQ OC MOD ===== */
+
 	return 0;
 }
+
+
+/* ===== ZEQ OC MOD ===== */
+static void zeq_inject_extra_freqs(struct cpufreq_qcom *c)
+{
+	int i, count = 0;
+
+	while (c->table[count].frequency != CPUFREQ_TABLE_END)
+		count++;
+
+	for (i = 0; i < ZEQ_EXTRA_FREQ_COUNT; i++) {
+		c->table[count + i].frequency = zeq_extra_freqs[i];
+		c->table[count + i].flags = CPUFREQ_BOOST_FREQ;
+	}
+
+	c->table[count + ZEQ_EXTRA_FREQ_COUNT].frequency = CPUFREQ_TABLE_END;
+}
+/* ===== END ZEQ OC MOD ===== */
+
 
 static void qcom_get_related_cpus(int index, struct cpumask *m)
 {
